@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — office_claude</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="container inner">
+      <h1>office_claude</h1>
+      <nav class="nav">
+        <span class="username-badge" id="username-badge"></span>
+        <a href="/users" class="btn btn-ghost btn-sm">Users</a>
+        <button id="logout-btn" class="btn btn-ghost btn-sm">Sign out</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container page">
+    <h2 class="page-title">Dashboard</h2>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
+      <div class="section-title" style="margin-bottom:0">Codebases</div>
+      <button id="sync-btn" class="btn btn-secondary btn-sm">Sync all</button>
+    </div>
+    <div id="codebase-grid" class="codebase-grid"></div>
+
+    <div style="margin-top:2rem;">
+      <div class="section-title">Your Active Sessions</div>
+      <div id="sessions-list" class="sessions-list">
+        <p style="color:var(--muted); font-size:0.875rem;">No active sessions.</p>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let currentUser = null;
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, opts);
+      if (res.status === 401 || res.redirected) {
+        window.location.href = '/auth/login';
+        throw new Error('Unauthorized');
+      }
+      return res;
+    }
+
+    async function load() {
+      const [meRes, cbRes, sessRes] = await Promise.all([
+        api('/api/me'),
+        api('/api/codebases'),
+        api('/api/sessions'),
+      ]);
+      currentUser = await meRes.json();
+      document.getElementById('username-badge').textContent = currentUser.username;
+
+      const { codebases } = await cbRes.json();
+      renderCodebases(codebases);
+
+      const { sessions } = await sessRes.json();
+      renderSessions(sessions);
+    }
+
+    function renderCodebases(codebases) {
+      const grid = document.getElementById('codebase-grid');
+      if (!codebases.length) {
+        grid.innerHTML = '<p style="color:var(--muted);font-size:0.875rem;">No codebases configured.</p>';
+        return;
+      }
+      grid.innerHTML = codebases.map(cb => `
+        <div class="codebase-card" data-name="${escHtml(cb.name)}">
+          <h3>${escHtml(cb.name)}</h3>
+          <div class="path">${escHtml(cb.path)}</div>
+          ${cb.last_synced ? `<div class="sync-time">Last synced: ${escHtml(cb.last_synced)}</div>` : ''}
+        </div>
+      `).join('');
+
+      grid.querySelectorAll('.codebase-card').forEach(card => {
+        card.addEventListener('click', () => startSession(card.dataset.name));
+      });
+    }
+
+    function renderSessions(sessions) {
+      const list = document.getElementById('sessions-list');
+      if (!sessions.length) {
+        list.innerHTML = '<p style="color:var(--muted); font-size:0.875rem;">No active sessions.</p>';
+        return;
+      }
+      list.innerHTML = sessions.map(s => `
+        <div class="session-item">
+          <div>
+            <strong>${escHtml(s.codebase_name)}</strong>
+            <div class="meta">Started: ${escHtml(s.created_at)} &nbsp;·&nbsp; Active: ${escHtml(s.last_active)}</div>
+          </div>
+          <div style="display:flex;gap:0.5rem;">
+            <a href="/session/${escHtml(s.id)}" class="btn btn-primary btn-sm">Open</a>
+            <button class="btn btn-danger btn-sm" onclick="endSession('${escHtml(s.id)}')">End</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function startSession(codebaseName) {
+      const btn = event.currentTarget;
+      btn.style.opacity = '0.6';
+      btn.style.pointerEvents = 'none';
+      try {
+        const res = await api('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codebase_name: codebaseName }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          alert('Failed to create session: ' + text);
+          return;
+        }
+        const { session_id } = await res.json();
+        window.location.href = '/session/' + session_id;
+      } finally {
+        btn.style.opacity = '';
+        btn.style.pointerEvents = '';
+      }
+    }
+
+    async function endSession(id) {
+      if (!confirm('End this session? The temp copy will be deleted.')) return;
+      await api('/api/sessions/' + id, { method: 'DELETE' });
+      load();
+    }
+
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      await fetch('/auth/logout', { method: 'POST' });
+      window.location.href = '/auth/login';
+    });
+
+    document.getElementById('sync-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('sync-btn');
+      btn.disabled = true;
+      btn.textContent = 'Syncing…';
+      await api('/api/codebases/sync', { method: 'POST' });
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = 'Sync all';
+        load();
+      }, 2000);
+    });
+
+    function escHtml(str) {
+      return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    load();
+  </script>
+</body>
+</html>

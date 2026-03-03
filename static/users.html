@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Users — office_claude</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="container inner">
+      <div style="display:flex;align-items:center;gap:1rem;">
+        <a href="/" class="btn btn-ghost btn-sm">← Dashboard</a>
+        <h1>User Management</h1>
+      </div>
+      <nav class="nav">
+        <span class="username-badge" id="username-badge"></span>
+        <button id="logout-btn" class="btn btn-ghost btn-sm">Sign out</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container page">
+    <div id="alert" class="alert hidden"></div>
+
+    <div style="display:flex;gap:2rem;flex-wrap:wrap;align-items:flex-start;">
+      <!-- User list -->
+      <div style="flex:1;min-width:300px;">
+        <div class="section-title">All Users</div>
+        <div class="card" style="padding:0;overflow:hidden;">
+          <table>
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="user-table-body">
+              <tr><td colspan="3" style="color:var(--muted)">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Add user form -->
+      <div style="flex:0 0 280px;">
+        <div class="section-title">Add User</div>
+        <div class="card">
+          <form id="add-user-form">
+            <div class="form-group">
+              <label for="new-username">Username</label>
+              <input type="text" id="new-username" required>
+            </div>
+            <div class="form-group">
+              <label for="new-password">Password</label>
+              <input type="password" id="new-password" required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%">Add User</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Change password modal -->
+  <div id="pw-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h3>Change Password</h3>
+      <p style="color:var(--muted);font-size:0.875rem;margin-bottom:1rem;">
+        Changing password for: <strong id="pw-modal-username"></strong>
+      </p>
+      <div class="form-group">
+        <label for="pw-new">New Password</label>
+        <input type="password" id="pw-new" required>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="pw-cancel">Cancel</button>
+        <button class="btn btn-primary" id="pw-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentUserId = null;
+    let pwTargetId = null;
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, opts);
+      if (res.status === 401 || res.redirected) {
+        window.location.href = '/auth/login';
+        throw new Error('Unauthorized');
+      }
+      return res;
+    }
+
+    function showAlert(msg, type = 'error') {
+      const el = document.getElementById('alert');
+      el.textContent = msg;
+      el.className = 'alert alert-' + type;
+      setTimeout(() => el.className = 'alert hidden', 4000);
+    }
+
+    function escHtml(str) {
+      return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function load() {
+      const [meRes, usersRes] = await Promise.all([
+        api('/api/me'),
+        api('/api/users'),
+      ]);
+      const me = await meRes.json();
+      currentUserId = me.id;
+      document.getElementById('username-badge').textContent = me.username;
+
+      const { users } = await usersRes.json();
+      renderUsers(users);
+    }
+
+    function renderUsers(users) {
+      const tbody = document.getElementById('user-table-body');
+      if (!users.length) {
+        tbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">No users.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = users.map(u => `
+        <tr>
+          <td>
+            ${escHtml(u.username)}
+            ${u.id === currentUserId ? '<span style="color:var(--muted);font-size:0.75rem;"> (you)</span>' : ''}
+          </td>
+          <td style="color:var(--muted);font-size:0.8rem;">${escHtml(u.created_at)}</td>
+          <td>
+            <div style="display:flex;gap:0.4rem;">
+              <button class="btn btn-secondary btn-sm" onclick="openPwModal(${u.id}, '${escHtml(u.username)}')">
+                Change PW
+              </button>
+              ${u.id !== currentUserId ? `
+                <button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id}, '${escHtml(u.username)}')">
+                  Delete
+                </button>
+              ` : ''}
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('add-user-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button[type=submit]');
+      btn.disabled = true;
+      const username = document.getElementById('new-username').value.trim();
+      const password = document.getElementById('new-password').value;
+
+      const res = await api('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (res.ok) {
+        showAlert('User created.', 'success');
+        document.getElementById('new-username').value = '';
+        document.getElementById('new-password').value = '';
+        load();
+      } else {
+        const text = await res.text();
+        showAlert('Failed: ' + text);
+      }
+      btn.disabled = false;
+    });
+
+    function openPwModal(id, username) {
+      pwTargetId = id;
+      document.getElementById('pw-modal-username').textContent = username;
+      document.getElementById('pw-new').value = '';
+      document.getElementById('pw-modal').classList.remove('hidden');
+      document.getElementById('pw-new').focus();
+    }
+
+    document.getElementById('pw-cancel').addEventListener('click', () => {
+      document.getElementById('pw-modal').classList.add('hidden');
+    });
+
+    document.getElementById('pw-save').addEventListener('click', async () => {
+      const password = document.getElementById('pw-new').value;
+      if (!password) return;
+      const res = await api('/api/users/' + pwTargetId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      document.getElementById('pw-modal').classList.add('hidden');
+      if (res.ok) {
+        showAlert('Password updated.', 'success');
+      } else {
+        showAlert('Failed to update password.');
+      }
+    });
+
+    async function deleteUser(id, username) {
+      if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+      const res = await api('/api/users/' + id, { method: 'DELETE' });
+      if (res.ok) {
+        showAlert('User deleted.', 'success');
+        load();
+      } else {
+        showAlert('Failed to delete user.');
+      }
+    }
+
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      await fetch('/auth/logout', { method: 'POST' });
+      window.location.href = '/auth/login';
+    });
+
+    load();
+  </script>
+</body>
+</html>

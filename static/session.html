@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Session — office_claude</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="container inner">
+      <div style="display:flex;align-items:center;gap:1rem;">
+        <a href="/" class="btn btn-ghost btn-sm">← Dashboard</a>
+        <h1 id="session-title">Session</h1>
+      </div>
+      <nav class="nav">
+        <span class="username-badge" id="username-badge"></span>
+        <button id="end-btn" class="btn btn-danger btn-sm">End Session</button>
+      </nav>
+    </div>
+  </header>
+
+  <div class="chat-layout">
+    <div id="messages" class="chat-messages">
+      <div class="message assistant">
+        <div class="message-avatar">C</div>
+        <div class="message-bubble" id="welcome-msg">
+          Session ready. Type a prompt to get started.
+        </div>
+      </div>
+    </div>
+
+    <div id="loading" class="loading-indicator hidden">
+      <div class="dot-pulse"><span></span><span></span><span></span></div>
+      <span>Claude is thinking…</span>
+    </div>
+
+    <div class="chat-input-area">
+      <div class="chat-input-row">
+        <textarea
+          id="prompt-input"
+          placeholder="Ask Claude something about this codebase…"
+          rows="1"
+          autofocus
+        ></textarea>
+        <button id="send-btn" class="btn btn-primary">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const sessionId = window.location.pathname.split('/').pop();
+    let isLoading = false;
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, opts);
+      if (res.status === 401 || res.redirected) {
+        window.location.href = '/auth/login';
+        throw new Error('Unauthorized');
+      }
+      return res;
+    }
+
+    async function init() {
+      const meRes = await api('/api/me');
+      const me = await meRes.json();
+      document.getElementById('username-badge').textContent = me.username;
+
+      const sessRes = await api('/api/sessions');
+      const { sessions } = await sessRes.json();
+      const sess = sessions.find(s => s.id === sessionId);
+      if (sess) {
+        document.getElementById('session-title').textContent = sess.codebase_name;
+        document.title = sess.codebase_name + ' — office_claude';
+      }
+    }
+
+    function escHtml(str) {
+      return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function addMessage(role, text) {
+      const messages = document.getElementById('messages');
+      const div = document.createElement('div');
+      div.className = 'message ' + role;
+      const avatar = document.createElement('div');
+      avatar.className = 'message-avatar';
+      avatar.textContent = role === 'user' ? 'U' : 'C';
+      const bubble = document.createElement('div');
+      bubble.className = 'message-bubble';
+      bubble.textContent = text;
+      div.appendChild(avatar);
+      div.appendChild(bubble);
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function sendPrompt() {
+      const input = document.getElementById('prompt-input');
+      const prompt = input.value.trim();
+      if (!prompt || isLoading) return;
+
+      isLoading = true;
+      input.value = '';
+      input.style.height = '';
+      document.getElementById('send-btn').disabled = true;
+      document.getElementById('loading').classList.remove('hidden');
+
+      addMessage('user', prompt);
+
+      try {
+        const res = await api('/api/sessions/' + sessionId + '/prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt }),
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          addMessage('assistant', 'Error: ' + text);
+        } else {
+          const { response } = await res.json();
+          addMessage('assistant', response);
+        }
+      } catch (err) {
+        if (err.message !== 'Unauthorized') {
+          addMessage('assistant', 'Error: ' + err.message);
+        }
+      } finally {
+        isLoading = false;
+        document.getElementById('send-btn').disabled = false;
+        document.getElementById('loading').classList.add('hidden');
+        input.focus();
+      }
+    }
+
+    document.getElementById('send-btn').addEventListener('click', sendPrompt);
+
+    document.getElementById('prompt-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendPrompt();
+      }
+    });
+
+    // Auto-resize textarea
+    document.getElementById('prompt-input').addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 180) + 'px';
+    });
+
+    document.getElementById('end-btn').addEventListener('click', async () => {
+      if (!confirm('End this session? The temp copy of the codebase will be deleted.')) return;
+      await api('/api/sessions/' + sessionId, { method: 'DELETE' });
+      window.location.href = '/';
+    });
+
+    init();
+  </script>
+</body>
+</html>

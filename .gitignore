@@ -1,0 +1,14 @@
+# Rust build artifacts
+target/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Sensitive config
+config.toml
+
+# Editor / OS
+.DS_Store
+.env

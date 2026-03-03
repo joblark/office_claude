@@ -1,0 +1,3 @@
+claude.thehomegarage.com {
+	reverse_proxy localhost:3000
+}

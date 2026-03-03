@@ -1,0 +1,1 @@
+ALTER TABLE claude_sessions ADD COLUMN initialized INTEGER NOT NULL DEFAULT 0;
