@@ -1,0 +1,20 @@
+[server]
+bind = "0.0.0.0:3000"
+session_secret = "change-me-use-a-long-random-string"
+db_path = "office_claude.db"
+
+[session]
+idle_timeout_minutes = 30
+git_sync_interval_minutes = 15
+
+[bootstrap]
+username = "admin"
+password = "changeme"
+
+[[codebases]]
+name = "My Project"
+path = "/home/user/code/my-project/"
+
+[[codebases]]
+name = "Another Project"
+path = "/home/user/code/another-project/"
