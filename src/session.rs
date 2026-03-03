@@ -61,6 +61,27 @@ pub async fn create_session(
         _ => {}
     }
 
+    // Create and checkout a new branch in the temp dir
+    let branch_name = format!("office-claude/{}", &session_id[..8]);
+    let git_result = tokio::process::Command::new("git")
+        .args(["checkout", "-b", &branch_name])
+        .current_dir(&temp_dir)
+        .output()
+        .await;
+
+    match git_result {
+        Ok(out) if !out.status.success() => {
+            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+            let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+            return (StatusCode::INTERNAL_SERVER_ERROR, stderr).into_response();
+        }
+        Err(e) => {
+            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+            return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
+        }
+        _ => {}
+    }
+
     let temp_dir_str = temp_dir.to_string_lossy().to_string();
 
     match sqlx::query(
