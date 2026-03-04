@@ -2,6 +2,7 @@
 bind = "0.0.0.0:3000"
 session_secret = "change-me-use-a-long-random-string"
 db_path = "office_claude.db"
+# claude_path = "/home/william/.local/bin/claude"  # set if claude is not in PATH
 
 [session]
 idle_timeout_minutes = 30

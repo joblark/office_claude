@@ -46,7 +46,7 @@ pub async fn handle_prompt(
         ("--resume", session.id.as_str())
     };
 
-    let output = tokio::process::Command::new("claude")
+    let output = tokio::process::Command::new(&state.config.server.claude_path)
         .args([
             session_arg.0,
             session_arg.1,

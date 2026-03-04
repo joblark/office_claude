@@ -14,6 +14,12 @@ pub struct ServerConfig {
     pub bind: String,
     pub session_secret: String,
     pub db_path: String,
+    #[serde(default = "default_claude_path")]
+    pub claude_path: String,
+}
+
+fn default_claude_path() -> String {
+    "claude".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize)]
