@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Session — office_claude</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 </head>
-<body>
+<body class="session-body">
   <header>
     <div class="container inner">
       <div style="display:flex;align-items:center;gap:1rem;">
@@ -20,37 +21,12 @@
     </div>
   </header>
 
-  <div class="chat-layout">
-    <div id="messages" class="chat-messages">
-      <div class="message assistant">
-        <div class="message-avatar">C</div>
-        <div class="message-bubble" id="welcome-msg">
-          Session ready. Type a prompt to get started.
-        </div>
-      </div>
-    </div>
+  <div id="terminal-container"></div>
 
-    <div id="loading" class="loading-indicator hidden">
-      <div class="dot-pulse"><span></span><span></span><span></span></div>
-      <span>Claude is thinking…</span>
-    </div>
-
-    <div class="chat-input-area">
-      <div class="chat-input-row">
-        <textarea
-          id="prompt-input"
-          placeholder="Ask Claude something about this codebase…"
-          rows="1"
-          autofocus
-        ></textarea>
-        <button id="send-btn" class="btn btn-primary">Send</button>
-      </div>
-    </div>
-  </div>
-
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   <script>
     const sessionId = window.location.pathname.split('/').pop();
-    let isLoading = false;
 
     async function api(path, opts = {}) {
       const res = await fetch(path, opts);
@@ -61,101 +37,103 @@
       return res;
     }
 
-    async function init() {
-      const meRes = await api('/api/me');
-      const me = await meRes.json();
-      document.getElementById('username-badge').textContent = me.username;
-
-      const sessRes = await api('/api/sessions');
-      const { sessions } = await sessRes.json();
-      const sess = sessions.find(s => s.id === sessionId);
-      if (sess) {
-        document.getElementById('session-title').textContent = sess.codebase_name;
-        document.title = sess.codebase_name + ' — office_claude';
-      }
-    }
-
-    function escHtml(str) {
-      return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
-
-    function addMessage(role, text) {
-      const messages = document.getElementById('messages');
-      const div = document.createElement('div');
-      div.className = 'message ' + role;
-      const avatar = document.createElement('div');
-      avatar.className = 'message-avatar';
-      avatar.textContent = role === 'user' ? 'U' : 'C';
-      const bubble = document.createElement('div');
-      bubble.className = 'message-bubble';
-      bubble.textContent = text;
-      div.appendChild(avatar);
-      div.appendChild(bubble);
-      messages.appendChild(div);
-      messages.scrollTop = messages.scrollHeight;
-    }
-
-    async function sendPrompt() {
-      const input = document.getElementById('prompt-input');
-      const prompt = input.value.trim();
-      if (!prompt || isLoading) return;
-
-      isLoading = true;
-      input.value = '';
-      input.style.height = '';
-      document.getElementById('send-btn').disabled = true;
-      document.getElementById('loading').classList.remove('hidden');
-
-      addMessage('user', prompt);
-
+    async function loadMeta() {
       try {
-        const res = await api('/api/sessions/' + sessionId + '/prompt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt }),
-        });
-
-        if (!res.ok) {
-          const text = await res.text();
-          addMessage('assistant', 'Error: ' + text);
-        } else {
-          const { response } = await res.json();
-          addMessage('assistant', response);
+        const [meRes, sessRes] = await Promise.all([api('/api/me'), api('/api/sessions')]);
+        const me = await meRes.json();
+        document.getElementById('username-badge').textContent = me.username;
+        const { sessions } = await sessRes.json();
+        const sess = sessions.find(s => s.id === sessionId);
+        if (sess) {
+          document.getElementById('session-title').textContent = sess.codebase_name;
+          document.title = sess.codebase_name + ' — office_claude';
         }
-      } catch (err) {
-        if (err.message !== 'Unauthorized') {
-          addMessage('assistant', 'Error: ' + err.message);
-        }
-      } finally {
-        isLoading = false;
-        document.getElementById('send-btn').disabled = false;
-        document.getElementById('loading').classList.add('hidden');
-        input.focus();
+      } catch (e) {
+        // ignore (auth redirect already in flight)
       }
     }
 
-    document.getElementById('send-btn').addEventListener('click', sendPrompt);
+    // Terminal
+    const term = new Terminal({
+      cursorBlink: true,
+      fontSize: 14,
+      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+      theme: {
+        background: '#0f1117',
+        foreground: '#e2e8f0',
+      },
+      scrollback: 5000,
+    });
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    const termContainer = document.getElementById('terminal-container');
 
-    document.getElementById('prompt-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendPrompt();
+    function openTerminal() {
+      if (termContainer.clientWidth === 0 || termContainer.clientHeight === 0) {
+        requestAnimationFrame(openTerminal);
+        return;
+      }
+      term.open(termContainer);
+      fitAddon.fit();
+    }
+    openTerminal();
+
+    // WebSocket
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}/api/sessions/${sessionId}/ws`);
+    ws.binaryType = 'arraybuffer';
+
+    function sendResize() {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+      }
+    }
+
+    ws.addEventListener('open', () => {
+      try { fitAddon.fit(); } catch(e) {}
+      sendResize();
+      term.focus();
+    });
+
+    ws.addEventListener('message', (event) => {
+      term.write(new Uint8Array(event.data));
+    });
+
+    ws.addEventListener('close', () => {
+      term.write('\r\n\x1b[33m[Connection closed]\x1b[0m\r\n');
+    });
+
+    ws.addEventListener('error', () => {
+      term.write('\r\n\x1b[31m[WebSocket error]\x1b[0m\r\n');
+    });
+
+    term.onData(data => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(new TextEncoder().encode(data).buffer);
       }
     });
 
-    // Auto-resize textarea
-    document.getElementById('prompt-input').addEventListener('input', function() {
-      this.style.height = 'auto';
-      this.style.height = Math.min(this.scrollHeight, 180) + 'px';
+    // Resize handling
+    const resizeObserver = new ResizeObserver(() => {
+      try { fitAddon.fit(); } catch(e) {}
+      sendResize();
+    });
+    resizeObserver.observe(termContainer);
+
+    window.addEventListener('resize', () => {
+      try { fitAddon.fit(); } catch(e) {}
+      sendResize();
     });
 
+    // End session
     document.getElementById('end-btn').addEventListener('click', async () => {
       if (!confirm('End this session? The temp copy of the codebase will be deleted.')) return;
-      await api('/api/sessions/' + sessionId, { method: 'DELETE' });
+      ws.close();
+      try { await api('/api/sessions/' + sessionId, { method: 'DELETE' }); } catch (e) {}
       window.location.href = '/';
     });
 
-    init();
+    loadMeta();
   </script>
 </body>
 </html>

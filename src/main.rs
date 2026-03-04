@@ -21,8 +21,8 @@ mod cleanup;
 mod codebases;
 mod config;
 mod db;
-mod prompt;
 mod session;
+mod terminal;
 mod users;
 
 use config::AppConfig;
@@ -118,8 +118,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/sessions", get(session::list_sessions))
         .route("/api/sessions", post(session::create_session))
         .route("/api/sessions/:id", delete(session::delete_session))
-        .route("/api/sessions/:id/prompt", post(prompt::handle_prompt))
+        .route("/api/sessions/:id/ws", get(terminal::ws_handler))
         .route("/api/me", get(api_me))
+        .route("/favicon.ico", get(|| async { axum::http::StatusCode::NO_CONTENT }))
         // Static files (CSS, JS)
         .nest_service("/static", ServeDir::new("static"))
         .layer(session_layer)

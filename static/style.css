@@ -224,11 +224,48 @@ tr:last-child td { border-bottom: none; }
   border-radius: var(--radius-lg);
   font-size: 0.9rem;
   line-height: 1.6;
-  white-space: pre-wrap;
   word-break: break-word;
 }
-.message.user .message-bubble { background: var(--user-bubble); border-bottom-right-radius: 4px; }
+.message.user .message-bubble { background: var(--user-bubble); border-bottom-right-radius: 4px; white-space: pre-wrap; }
 .message.assistant .message-bubble { background: var(--claude-bubble); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+
+/* Markdown rendering inside assistant bubbles */
+.message.assistant .message-bubble p { margin-bottom: 0.6rem; }
+.message.assistant .message-bubble p:last-child { margin-bottom: 0; }
+.message.assistant .message-bubble h1,
+.message.assistant .message-bubble h2,
+.message.assistant .message-bubble h3,
+.message.assistant .message-bubble h4 { margin: 0.75rem 0 0.35rem; font-weight: 600; }
+.message.assistant .message-bubble ul,
+.message.assistant .message-bubble ol { padding-left: 1.4rem; margin-bottom: 0.6rem; }
+.message.assistant .message-bubble li { margin-bottom: 0.2rem; }
+.message.assistant .message-bubble code {
+  background: rgba(0,0,0,0.3);
+  border-radius: 4px;
+  padding: 0.15em 0.4em;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.85em;
+}
+.message.assistant .message-bubble pre {
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  margin-bottom: 0.6rem;
+}
+.message.assistant .message-bubble pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.85rem;
+}
+.message.assistant .message-bubble blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 0.75rem;
+  color: var(--muted);
+  margin: 0.5rem 0;
+}
+.message.assistant .message-bubble hr { border: none; border-top: 1px solid var(--border); margin: 0.75rem 0; }
 .message-avatar {
   width: 32px;
   height: 32px;
@@ -299,6 +336,20 @@ textarea::placeholder { color: var(--muted); }
 }
 
 .hidden { display: none !important; }
+
+/* Terminal layout */
+body.session-body {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+#terminal-container {
+  overflow: hidden;
+  min-height: 0;
+  background: #0f1117;
+}
+#terminal-container .xterm-viewport { overflow-y: hidden !important; }
 
 /* Modal */
 .modal-overlay {
