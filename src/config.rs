@@ -26,6 +26,14 @@ fn default_claude_path() -> String {
 pub struct SessionConfig {
     pub idle_timeout_minutes: u64,
     pub git_sync_interval_minutes: u64,
+    #[serde(default = "default_sessions_dir")]
+    pub sessions_dir: String,
+}
+
+fn default_sessions_dir() -> String {
+    std::env::temp_dir()
+        .to_string_lossy()
+        .to_string()
 }
 
 #[derive(Debug, Clone, Deserialize)]

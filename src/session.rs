@@ -33,7 +33,8 @@ pub async fn create_session(
     };
 
     let session_id = Uuid::new_v4().to_string();
-    let temp_dir = std::env::temp_dir().join(format!("office_claude_{}", session_id));
+    let temp_dir = std::path::Path::new(&state.config.session.sessions_dir)
+        .join(format!("office_claude_{}", session_id));
 
     if let Err(e) = tokio::fs::create_dir_all(&temp_dir).await {
         return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();

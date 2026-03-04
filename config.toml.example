@@ -7,6 +7,7 @@ db_path = "office_claude.db"
 [session]
 idle_timeout_minutes = 30
 git_sync_interval_minutes = 15
+# sessions_dir = "/var/lib/office_claude/sessions"  # defaults to /tmp (RAM on most Linux systems)
 
 [bootstrap]
 username = "admin"
