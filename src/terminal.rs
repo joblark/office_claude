@@ -77,6 +77,8 @@ async fn handle_socket(
         cmd.arg("--continue");
     }
     cmd.cwd(&temp_dir);
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
 
     let mut child = match pair.slave.spawn_command(cmd) {
         Ok(c) => c,
