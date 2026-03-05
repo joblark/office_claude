@@ -72,14 +72,6 @@ async fn handle_socket(
         }
     };
 
-    // Pre-create the ~/.claude/projects/<encoded-path>/ directory so Claude
-    // treats this workspace as trusted and skips the trust prompt.
-    if let Ok(home) = std::env::var("HOME") {
-        let encoded = temp_dir.replace(['/', '_'], "-");
-        let project_dir = format!("{}/.claude/projects/{}", home, encoded);
-        let _ = std::fs::create_dir_all(&project_dir);
-    }
-
     let mut cmd = CommandBuilder::new(&claude_path);
     if initialized != 0 {
         cmd.arg("--continue");
@@ -87,6 +79,10 @@ async fn handle_socket(
     cmd.cwd(&temp_dir);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    if let Ok(home) = std::env::var("HOME") {
+        let base_path = std::env::var("PATH").unwrap_or_default();
+        cmd.env("PATH", format!("{}/.local/bin:{}", home, base_path));
+    }
 
     let mut child = match pair.slave.spawn_command(cmd) {
         Ok(c) => c,

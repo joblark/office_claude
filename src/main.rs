@@ -63,6 +63,11 @@ async fn main() -> anyhow::Result<()> {
 
     db::bootstrap_user(&pool, &config.bootstrap).await?;
 
+    // Mark the sessions directory as trusted in ~/.claude/settings.json so
+    // Claude never shows the workspace trust dialog for any session subdirectory.
+    trust_sessions_dir(&config.session.sessions_dir);
+
+
     let session_store = SqliteStore::new(pool.clone());
     session_store
         .migrate()
@@ -137,6 +142,32 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+fn trust_sessions_dir(sessions_dir: &str) {
+    let home = match std::env::var("HOME") {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+    let settings_path = format!("{}/.claude/settings.json", home);
+    let mut settings: serde_json::Value = std::fs::read_to_string(&settings_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    let _ = std::fs::create_dir_all(sessions_dir);
+    let path = std::path::Path::new(sessions_dir)
+        .canonicalize()
+        .unwrap_or_else(|_| std::path::PathBuf::from(sessions_dir));
+    let key = path.to_string_lossy().replace('\\', "/");
+
+    if settings["projects"][&key]["hasTrustDialogAccepted"].as_bool() != Some(true) {
+        settings["projects"][key]["hasTrustDialogAccepted"] = serde_json::json!(true);
+        if let Ok(json) = serde_json::to_string_pretty(&settings) {
+            let _ = std::fs::write(&settings_path, json);
+        }
+        tracing::info!("Marked {} as trusted in Claude settings", sessions_dir);
+    }
 }
 
 async fn page_index(_auth: auth::AuthUser) -> Html<&'static str> {

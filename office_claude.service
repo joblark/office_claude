@@ -1,0 +1,14 @@
+[Unit]
+Description=Office Claude
+After=network.target
+
+[Service]
+Type=simple
+User=william
+WorkingDirectory=/home/william/code/office_claude
+ExecStart=/home/william/code/office_claude/target/release/office_claude
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
